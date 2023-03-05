@@ -1,0 +1,4 @@
+steamapps_index/
+*.pickle
+appsettings.json
+__pycache__/
