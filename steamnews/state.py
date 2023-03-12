@@ -37,10 +37,11 @@ class ProgramState:
     def save(self, config, log):
         if not self.changed:
             return
-        log.info("State saved to disk.")
         state_file = Path(config['state_file']).absolute()
         with open(state_file, 'wb') as fh:
             pickle.dump((1, self.serialize()), fh)
+        self.changed = False
+        log.info("State saved to disk.")
     def get_server(self, ctx, log):
         guild_id = ctx.guild_id
         if not guild_id:
