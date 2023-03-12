@@ -1,10 +1,13 @@
-import discord
-from discord.utils import escape_markdown as escape
 import pickle
 from pathlib import Path
 import functools
 from collections import defaultdict
+import os
+import logging
+import logging.config
 
+import discord
+from discord.utils import escape_markdown as escape
 import whoosh.query
 import whoosh.qparser
 from discord.ext import tasks
@@ -15,11 +18,13 @@ import steamnews.config
 import steamnews.index
 import steamnews.feeds
 
+log = None
+
 class SteamApps:
     @classmethod
     def load(Cls, config):
         index = steamnews.index.create_steamapp_index(config)
-        print(f"Indexes loaded - {index.doc_count()} entries")
+        log.info(f"Indexes loaded - {index.doc_count()} entries")
         return Cls(index)
     def __init__(self, index):
         self.index = index
@@ -59,28 +64,34 @@ class ProgramState:
     def load(Cls, config):
         state_file = Path(config['state_file']).absolute()
         if not state_file.is_file():
-            print("No state found, creating new...")
+            log.info("No state found, creating new...")
             return Cls()
         else:
-            print("Loading previous state...")
+            log.info("Loading previous state...")
             with open(state_file, 'rb') as fh:
-                loaded = pickle.load(fh)
-            print(f"State loaded: {len(loaded.servers)} servers and {len(loaded.timestamps)} feeds")
-            return loaded
-    def __init__(self):
-        self.servers = {}
-        self.timestamps = {}
+                (version, data) = pickle.load(fh)
+                (servers, timestamps) = data
+            log.info(f"State loaded: {len(servers)} servers and {len(timestamps)} feeds")
+            return Cls(servers, timestamps)
+    def __init__(self, servers=None, timestamps=None):
+        self.servers = servers or {}
+        self.timestamps = timestamps or {}
+        self.changed = False
     def save(self, config):
+        if not self.changed:
+            return
+        log.info("State saved to disk.")
         state_file = Path(config['state_file']).absolute()
         with open(state_file, 'wb') as fh:
-            pickle.dump(self, fh)
-    def get_server(self, context):
-        guild_id = context.guild_id
+            pickle.dump((1, (self.servers, self.timestamps)), fh)
+    def get_server(self, ctx):
+        guild_id = ctx.guild_id
         if not guild_id:
             return None
         if not guild_id in self.servers:
             self.servers[guild_id] = Server(context)
-            print(f"Server #{guild_id} added. Total servers: {len(self.servers)}")
+            self.changed = True
+            log.info(f"Server {ctx.guild}#{guild_id} added. Total servers: {len(self.servers)}")
         return self.servers[guild_id]
     def get_active_server_feeds(self):
         feed_servers = defaultdict(list)
@@ -90,13 +101,12 @@ class ProgramState:
                     feed_servers[server_feed].append(server)
         return feed_servers
     def check_feeds(self, steamapps, config):
-        print("Checking feeds...")
         feed_servers = self.get_active_server_feeds()
-        print(f"{len(feed_servers)} feeds to check.")
+        log.info(f"Checking feeds ({len(feed_servers)})")
         result = []
         for app_id in feed_servers.keys():
             try:
-                items = steamnews.feeds.load(app_id, config)
+                items = steamnews.feeds.load(app_id, config, log)
                 if app_id not in self.timestamps:
                     # Feed not seen before, only get latest item.
                     new = items[-1:]
@@ -107,8 +117,9 @@ class ProgramState:
                     app_name = steamapps.name_from_id(app_id) or '<Unknown>'
                     result.append((feed_servers[app_id], app_id, app_name, new))
                     self.timestamps[app_id] = new[-1].timestamp()
+                    self.changed = True
             except Exception as ex:
-                print(f"Error getting feed #{app_id}: {ex}")
+                log.warning(f"Error getting feed #{app_id}: {ex}")
         return result
 
 def blurbify(markup):
@@ -144,6 +155,11 @@ async def send_button_message(ctx, message, options, callback, **args):
         pass
     await ctx.respond(message, view=ButtonView2(timeout=120), **args)
 
+def init_logging():
+    global log
+    logging.config.fileConfig('logging.conf')
+    log = logging.getLogger('root')
+
 def create_bot(config, program_state, steam_app_list):
     steamnewsgroup = discord.SlashCommandGroup(config['bot_name'].lower(), f"Commands for the {config['bot_name']} bot.")
     bot = discord.Bot()
@@ -161,7 +177,7 @@ def create_bot(config, program_state, steam_app_list):
             await ctx.respond("This is not a server!")
             return
         channel_was_set = server.add_feed(appid, ctx.channel_id)
-        print(f'[{server.name}#{server.id}] Added "{name}" (#{appid})')
+        log.info(f'{server.name}#{server.id} added "{name}" (#{appid})')
         msg = f"Now posting news about *{escape(name)}* (#{appid})"
         if channel_was_set:
             msg += "\nPosting news in this channel."
@@ -179,7 +195,7 @@ def create_bot(config, program_state, steam_app_list):
             await ctx.respond("This is not a server!")
             return
         server.channel = int(ctx.channel_id)
-        print(f"[{server.name}#{server.id}] Setting channel to {ctx.channel}#{ctx.channel_id}")
+        log.info(f"{server.name}#{server.id} set channel to {ctx.channel}#{ctx.channel_id}")
         await ctx.respond("Now posting in this channel.")
 
     @steamnewsgroup.command(description="Stop posting to this server.")
@@ -194,7 +210,7 @@ def create_bot(config, program_state, steam_app_list):
         if server.channel is None:
             await ctx.respond("I was already not posting anywhere.", ephemeral=True)
             return
-        print(f'[{server.name}#{server.id}] Stopping')
+        log.info(f'{server.name}#{server.id} stopped posting')
         await ctx.respond("Ok, I've stopped posting.", ephemeral=True)
         await bot.get_channel(server.channel).send("No longer posting to this channel.")
         server.channel = None
@@ -226,7 +242,7 @@ def create_bot(config, program_state, steam_app_list):
         if not name:
             await ctx.respond(f"Sorry! I don't think #{appid} is valid.", ephemeral=True)
         else:
-            print(f"Found '{name}' for #{appid}")
+            log.debug(f"Found '{name}' for #{appid}")
             await _do_add(ctx, ctx.respond, appid, name)
 
     @steamnewsgroup.command(description="List all news feeds.")
@@ -256,7 +272,7 @@ def create_bot(config, program_state, steam_app_list):
         name = steam_app_list.name_from_id(appid) or '<Unnamed>'
         if appid in server.subscribed:
             server.subscribed.remove(appid)
-            print(f"[{server.name}#{server.id}] Removed {name} ({appid})")
+            log.info(f"{server.name}#{server.id} removed {name} ({appid})")
             await ctx.respond(f"Ok! Won't post about *{escape(name)}* (#{appid}) any more.", ephemeral=True)
             if server.channel is not None:
                 await bot.get_channel(server.channel).send("No longer posting about *{escape(name)}* (#{appid}) in this channel.")
@@ -279,38 +295,52 @@ def create_bot(config, program_state, steam_app_list):
 
     @bot.event
     async def on_ready():
-        print("Bot is ready.")
+        save_state.start()
         update_feeds.start()
+        log.info("Bot is running. Press Ctrl+C to exit.")
 
     @tasks.loop(seconds=config['seconds_between_updates'])
     async def update_feeds():
         servers_new_items = program_state.check_feeds(steam_app_list, config)
-        print(f"{len(servers_new_items)} updates to post.")
+        if not servers_new_items:
+            return
+        log.info(f"Posting {len(servers_new_items)} new updates.")
         for servers, app_id, app_name, new_items in servers_new_items:
             embeds = [embed_from_feed_item(x, app_id, app_name, config) for x in new_items]
             for server in servers:
                 channel = bot.get_channel(server.channel)
                 for embed in embeds:
                     await channel.send(embed=embed)
+
+    @tasks.loop(seconds=300)
+    async def save_state():
+        program_state.save(config)
+
     return bot
 
 if __name__ == '__main__':
-    print("Getting configuration...")
-    config_file = Path(__file__).absolute().parent / 'appsettings.json'
-    config = steamnews.config.load_configuration(config_file)
-    if config['bot_token'] == steamnews.config.TOKEN_PLACEHOLDER:
-        print(f"Replace {steamnews.config.TOKEN_PLACEHOLDER} in your config!")
-        exit(1)
-    print("Getting state...")
-    program_state = ProgramState.load(config)
-    print("Getting Steam apps...")
-    steam_app_list = SteamApps.load(config)
-    bot = create_bot(config, program_state, steam_app_list)
-
-    print("Running bot...")
-    bot.run(config['bot_token'])
+    os.chdir(Path(__file__).absolute().parent)
+    print("Initializing logging...")
+    init_logging()
+    log.info("-------- Logging initialized --------")
+    log.info("Getting configuration...")
+    config_file = Path('./appsettings.json')
+    config = steamnews.config.load_configuration(config_file, log)
     
-    print("Saving state before exit...")
-    program_state.save(config)
-    print("Accepting my fate.")
+    if config['bot_token'] == steamnews.config.TOKEN_PLACEHOLDER:
+        log.critical(f"Replace {steamnews.config.TOKEN_PLACEHOLDER} in your config!")
+        exit(1)
+    log.info("Getting state...")
+    program_state = ProgramState.load(config)
+    try:
+        log.info("Getting Steam apps...")
+        steam_app_list = SteamApps.load(config)
+        bot = create_bot(config, program_state, steam_app_list)
+
+        log.info("Running bot...")
+        bot.run(config['bot_token'])
+    finally:
+        log.info("Saving state before exit...")
+        program_state.save(config)
+    log.info("Shutdown complete.")
 

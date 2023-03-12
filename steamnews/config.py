@@ -3,6 +3,7 @@ import json
 
 TOKEN_PLACEHOLDER = 'YOUR_DISCORD_BOT_TOKEN_HERE'
 DEFAULT_CONFIG = {
+    'version': 1,
     'bot_name': 'SteamNews',
     'bot_token': TOKEN_PLACEHOLDER,
     'state_file': './state.pickle',
@@ -13,11 +14,11 @@ DEFAULT_CONFIG = {
     'seconds_between_updates': 600,
 }
 
-def load_configuration(config_file):
-    print(f"Loading config from {config_file}")
+def load_configuration(config_file, log):
+    log.info(f"Loading config from {config_file}")
     if not config_file.is_file():
         with open(config_file, 'w') as fh:
-            print("... doesn't exist, so create it.")
+            log.info("... doesn't exist, so create it.")
             json.dump(DEFAULT_CONFIG, fh, indent='\t')
     with open(config_file, 'r') as fh:
         config = json.load(fh)

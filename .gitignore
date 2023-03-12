@@ -2,3 +2,4 @@ steamapps_index/
 *.pickle
 appsettings.json
 __pycache__/
+log.txt

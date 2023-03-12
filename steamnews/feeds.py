@@ -37,13 +37,13 @@ class NewsItem:
 		else:
 			return self.date.strftime("%A, %B %d at %H:%M:%S %Z")
 
-def load(app_id, config):
+def load(app_id, config, log):
 	url = config['steam_feed_url'].format(id=app_id)
 	r = requests.get(url)
 	if 200 <= r.status_code < 300:
 		return parse(r.text)
 	else:
-		print(f"Code {r.status_code} when fetching {url}")
+		log.warning(f"Code {r.status_code} when fetching {url}")
 		return None
 
 def parse(rss):
