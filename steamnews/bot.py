@@ -52,8 +52,11 @@ def create_bot(program_state, steam_app_list, config, log):
         if not server:
             await ctx.respond("This is not a server!")
             return
-        channel_was_set = server.add_feed(appid, ctx.channel_id)
-        log.info(f'{server.name}#{server.id} added "{name}" (#{appid})')
+        (appid_was_added, channel_was_set) = server.add_feed(appid, ctx.channel_id)
+        if not appid_was_added:
+            await response_func(f'*{escape(name)}* (#{appid}) is already on the list.')
+            return
+        log.info(f'"{server.name}" (#{server.id}) added "{name}" (#{appid})')
         msg = f"Now posting news about *{escape(name)}* (#{appid})"
         if channel_was_set:
             msg += "\nPosting news in this channel."
@@ -64,20 +67,22 @@ def create_bot(program_state, steam_app_list, config, log):
     @steamnewsgroup.command(description="Tell the bot to post here.")
     async def posthere(ctx):
         if not _authorized(ctx):
-            ctx.respond("Only the server owner can use this command.")
+            await ctx.respond("Only the server owner can use this command.")
             return
         server = program_state.get_server(ctx, log)
         if not server:
             await ctx.respond("This is not a server!")
             return
-        server.channel = int(ctx.channel_id)
-        log.info(f"{server.name}#{server.id} set channel to {ctx.channel}#{ctx.channel_id}")
+        old_channel = server.set_channel(int(ctx.channel_id))
+        if old_channel is not None:
+            await bot.get_channel(old_channel).send("No longer posting to this channel.")
+        log.info(f'"{server.name}" (#{server.id}) set channel to "{ctx.channel}" (#{ctx.channel_id})')
         await ctx.respond("Now posting in this channel.")
 
     @steamnewsgroup.command(description="Stop posting to this server.")
     async def mute(ctx):
         if not _authorized(ctx):
-            ctx.respond("Only the server owner can use this command.")
+            await ctx.respond("Only the server owner can use this command.")
             return
         server = program_state.get_server(ctx, log)
         if not server:
@@ -86,15 +91,15 @@ def create_bot(program_state, steam_app_list, config, log):
         if server.channel is None:
             await ctx.respond("I was already not posting anywhere.", ephemeral=True)
             return
-        log.info(f'{server.name}#{server.id} stopped posting')
+        log.info(f'"{server.name}" (#{server.id}) stopped posting')
         await ctx.respond("Ok, I've stopped posting.", ephemeral=True)
         await bot.get_channel(server.channel).send("No longer posting to this channel.")
-        server.channel = None
+        server.set_channel(None)
 
     @steamnewsgroup.command(description="Add a Steam game to the news feed.")
     async def add(ctx, name: str):
         if not _authorized(ctx):
-            ctx.respond("Only the server owner can use this command.")
+            await ctx.respond("Only the server owner can use this command.")
             return
         matches = steam_app_list.search_names(name)
         if len(matches) == 0:
@@ -112,7 +117,7 @@ def create_bot(program_state, steam_app_list, config, log):
     @steamnewsgroup.command(description="Add a Steam game by ID to the news feed.")
     async def addid(ctx, appid: int):
         if not _authorized(ctx):
-            ctx.respond("Only the server owner can use this command.")
+            await ctx.respond("Only the server owner can use this command.")
             return
         name = steam_app_list.name_from_id(appid)
         if not name:
@@ -127,10 +132,13 @@ def create_bot(program_state, steam_app_list, config, log):
         if not server:
             await ctx.respond("This is not a server!")
             return
-        lines = ["These are the feeds you are subscribed to:"]
+        lines = ["This server is subscribed to the following feeds:"]
         for appid in server.subscribed:
             name = steam_app_list.name_from_id(appid) or '<Unnamed>'
             lines.append(f"  • *{escape(name)}* (#{appid})")
+        if server.channel is not None:
+            channel_name = bot.get_channel(server.channel).name
+            lines.append(f'They are posted to the channel "{escape(channel_name)}".')
         if len(lines) == 1:
             await ctx.respond("You haven't subscribed to any feeds yet.", ephemeral=True)
         else:
@@ -139,35 +147,35 @@ def create_bot(program_state, steam_app_list, config, log):
     @steamnewsgroup.command(description="Remove a news feed by #ID.")
     async def removeid(ctx, appid: int):
         if not _authorized(ctx):
-            ctx.respond("Only the server owner can use this command.")
+            await ctx.respond("Only the server owner can use this command.")
             return
         server = program_state.get_server(ctx, log)
         if not server:
             await ctx.respond("This is not a server!")
             return
         name = steam_app_list.name_from_id(appid) or '<Unnamed>'
-        if appid in server.subscribed:
-            server.subscribed.remove(appid)
-            log.info(f"{server.name}#{server.id} removed {name} ({appid})")
-            await ctx.respond(f"Ok! Won't post about *{escape(name)}* (#{appid}) any more.", ephemeral=True)
-            if server.channel is not None:
-                await bot.get_channel(server.channel).send("No longer posting about *{escape(name)}* (#{appid}) in this channel.")
-        else:
-            await ctx.respond(f"You're not subscribed to *{escape(name)}* (#{appid}).")
+        was_removed = server.remove_feed(appid)
+        if not was_removed:
+            await ctx.respond(f"You're not subscribed to *{escape(name)}* (#{appid}).", ephemeral=True)
+            return
+        log.info(f'"{server.name}" (#{server.id}) removed "{name}" (#{appid})')
+        await ctx.respond(f"Ok! Won't post about *{escape(name)}* (#{appid}) any more.", ephemeral=True)
+        if server.channel is not None:
+            await bot.get_channel(server.channel).send(f"No longer posting about *{escape(name)}* (#{appid}) in this channel.")
 
     @steamnewsgroup.command(description="Remove all news feeds.")
     async def purge(ctx):
         if not _authorized(ctx):
-            ctx.respond("Only the server owner can use this command.")
+            await ctx.respond("Only the server owner can use this command.")
             return
         server = program_state.get_server(ctx, log)
         if not server:
             await ctx.respond("This is not a server!")
             return
-        server.subscribed.clear()
+        server.purge_feeds()
         await ctx.respond(f"Ok! All subscriptions are gone.", ephemeral=True)
         if server.channel is not None:
-            await bot.get_channel(server.channel).send("No longer posting about anything in this channel.")
+            await bot.get_channel(server.channel).send("No longer posting about anything.")
 
     @bot.event
     async def on_ready():

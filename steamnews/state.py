@@ -1,8 +1,28 @@
 from pathlib import Path
 import pickle
 from collections import defaultdict
+import tempfile
+import os
 
 import steamnews.feeds
+
+class AtomicBinaryFile:
+    def __init__(self, path):
+        self.handle = None
+        self.temp_path = None
+        self.path = Path(path).absolute()
+    def __enter__(self):
+        handle, temp_path = tempfile.mkstemp(prefix='state_', dir=self.path.parent)
+        self.handle = os.fdopen(handle, 'wb')
+        self.temp_path = Path(temp_path)
+        return self.handle
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.handle.close()
+        if exc_type is None:
+            os.replace(self.temp_path, self.path)
+        else:
+            self.temp_path.unlink()
+        return False
 
 class Server:
     def __init__(self, name, id_, channel=None, subscribed=None):
@@ -10,18 +30,37 @@ class Server:
         self.id = id_
         self.channel = channel
         self.subscribed = subscribed or set()
+        self.changed = False
     @classmethod
     def from_context(Cls, ctx):
         name = str(ctx.guild)
         id_ = int(ctx.guild_id)
         return Cls(name, id_)
+    def set_channel(self, channel):
+        if self.channel == channel:
+            return False
+        self.changed = True
+        self.channel = channel
+        return True
     def add_feed(self, steam_app_id, channel=None):
+        new_app_id = int(steam_app_id)
+        if new_app_id in self.subscribed:
+            return (False, False)
+        self.changed = True
         self.subscribed.add(int(steam_app_id))
         if self.channel is None and channel is not None:
             self.channel = int(channel)
-            return True
-        else:
+            return (True, True)
+        return (True, False)
+    def remove_feed(self, steam_app_id):
+        self.changed = True
+        if steam_app_id not in self.subscribed:
             return False
+        self.subscribed.remove(steam_app_id)
+        return True
+    def purge_feeds(self):
+        self.changed = True
+        self.subscribed.clear()
     def serialize(self):
         return (self.name, self.id, self.channel, self.subscribed)
     @classmethod
@@ -35,10 +74,10 @@ class ProgramState:
         self.timestamps = timestamps or {}
         self.changed = False
     def save(self, config, log):
-        if not self.changed:
+        if not self.has_changed():
             return
         state_file = Path(config['state_file']).absolute()
-        with open(state_file, 'wb') as fh:
+        with AtomicBinaryFile(state_file) as fh:
             pickle.dump((1, self.serialize()), fh)
         self.changed = False
         log.info("State saved to disk.")
@@ -79,6 +118,10 @@ class ProgramState:
             except Exception as ex:
                 log.warning(f"Error getting feed #{app_id}: {ex}")
         return result
+    def has_changed(self):
+        if self.changed:
+            return True
+        return any([s.changed for s in self.servers.values()])
     def serialize(self):
         servers = [(k, v.serialize()) for k, v in self.servers.items()]
         timestamps = self.timestamps

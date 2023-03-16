@@ -8,7 +8,7 @@ def create_steamapp_index(config):
     if indexdir.is_dir():
         return whoosh.index.open_dir(indexdir)
     else:
-        indexdir.mkdir(exist_ok)
+        indexdir.mkdir()
         schema = whoosh.fields.Schema(appid=whoosh.fields.NUMERIC(stored=True, unique=True), name=whoosh.fields.TEXT(stored=True))
         return whoosh.index.create_in(indexdir, schema)
 
