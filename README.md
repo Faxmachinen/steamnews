@@ -13,21 +13,27 @@ By making SteamNews specifically for Steam, it affords some features:
 
 ## Installation
 
-This is not packaged, so you'll have to install it manually:
-1. Download this repository.
-1. (Optional:) Create a [venv](https://docs.python.org/3/library/venv.html) and activate it.
-1. Run `pip install -r requirements.txt`
+### On Windows
+```
+py -m pip install steamnews
+```
+
+### On Linux
+```
+pip3 install steamnews
+```
 
 ## Quick start
 
 ### Running the bot
-1. Open a console and run `create_index.py`
-1. While that is doing it's thing, open another console and run `run_bot.py`
+1. Make a folder for steamnews and `cd` into it.
+1. Run `steamnews index`
+1. While that is doing it's thing, open another console and run `steamnews bot`
    Since this is the first time it's run, it creates `appsettings.json`, tells you to replace YOUR_DISCORD_BOT_TOKEN_HERE in that file, and then exits.
 1. Log in to the [Discord developer portal](https://discord.com/developers) and create an application with a bot (you may want to follow a guide).
 1. Copy the bot's token into `appsettings.json`
-1. Now run `run_bot.py` again. This time it should print *"Bot is running. Press Ctrl+C to exit."*
-1. Check that `create_index.py` has finished. The command to search by name will not work until it has.
+1. Now run `steamnews bot` again. This time it should print *"Bot is running. Press Ctrl+C to exit."*
+1. Check that `steamnews index` has finished. The command to search by name will not work until it has.
 
 ### Generating the invitation link
 1. Go back to your bot on the Discord developer portal, and find the "URL Generator" under OAuth2.
@@ -55,18 +61,18 @@ All commands except `/steamnews list` can only be run by the server owner.
 
 ## More information
 
-There are two scripts in the root folder, `run_bot.py` and `create_index.py`:
+You can see more options by running `steamnews --help`, such as changing where the configuration files are read from.
 
-### create_index.py
+### steamnews index
 
-This script downloads the list of apps from the Steam database, indexes the names, then exits.
+This command downloads the list of apps from the Steam database, indexes the names, then exits.
 You need to run this at least once for the bot to be able to find games by their names.
 If you're running your bot as a public service, you may want to run it on a daily schedule to keep it in sync with Steam's database.
 You can run it while the bot is running.
 
-The indexes are stored on disk in the `steamapps_index` folder.
+The indexes are stored on disk in the `./steamapps_index` folder.
 
-### run_bot.py
+### steamnews bot
 
 This script runs the bot, making it show as "Online" in Discord, and keeps running until you press Ctrl+C.
 Commands sent to the bot in Discord are processed by this script.
@@ -75,5 +81,5 @@ If you need to stop the bot, you should do so with Ctrl+C (in theory, sending SI
 When you do so, it stores its state (servers, added apps, feed timestamps) in `state.picle` and exits cleanly.
 Otherwise, the bot also stores its state every five minutes, so maybe you didn't lose too much (or anything at all).
 
-You can check `log.txt` to see when the state was last saved.
+You can check `./log.txt` to see when the state was last saved.
 Note that state does not get saved unless it actually changed.

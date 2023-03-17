@@ -3,3 +3,4 @@ steamapps_index/
 appsettings.json
 __pycache__/
 log.txt
+dist/
