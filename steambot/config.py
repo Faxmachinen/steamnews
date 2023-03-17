@@ -4,7 +4,7 @@ import json
 TOKEN_PLACEHOLDER = 'YOUR_DISCORD_BOT_TOKEN_HERE'
 DEFAULT_CONFIG = {
     'version': 1,
-    'bot_name': 'SteamNews',
+    'bot_name': 'SteamBot',
     'bot_token': TOKEN_PLACEHOLDER,
     'state_file': './state.pickle',
     'steam_app_list_url': 'https://api.steampowered.com/ISteamApps/GetAppList/v2/',

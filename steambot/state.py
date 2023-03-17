@@ -4,7 +4,7 @@ from collections import defaultdict
 import tempfile
 import os
 
-import steamnews.feeds
+import steambot.feeds
 
 class AtomicBinaryFile:
     def __init__(self, path):
@@ -103,13 +103,13 @@ class ProgramState:
         result = []
         for app_id in feed_servers.keys():
             try:
-                items = steamnews.feeds.load(app_id, config, log)
+                items = steambot.feeds.load(app_id, config, log)
                 if app_id not in self.timestamps:
                     # Feed not seen before, only get latest item.
                     new = items[-1:]
                 else:
                     # Feed seen before, get new items.
-                    new = steamnews.feeds.items_after(items, self.timestamps[app_id])
+                    new = steambot.feeds.items_after(items, self.timestamps[app_id])
                 if new:
                     app_name = steamapps.name_from_id(app_id) or '<Unknown>'
                     result.append((feed_servers[app_id], app_id, app_name, new))
