@@ -1,19 +1,16 @@
 from pathlib import Path
-import logging
-import logging.config
 import argparse
 import requests
 
 import steambot.config
+import steambot.logconfig
 import steambot.index
 import steambot.feeds
 import steambot.bot
 import steambot.state
 
 def configure(config_path, log_config_path):
-    print("Initializing logging...")
-    logging.config.fileConfig(log_config_path)
-    log = logging.getLogger('root')
+    log = steambot.logconfig.init_logging(log_config_path)
     log.info("-------- Logging initialized --------")
     log.info("Getting configuration...")
     config = steambot.config.load_configuration(config_path, log)
@@ -61,12 +58,14 @@ def main():
         prog='steambot',
         description='A Discord bot for Steam news feeds.')
     parser.add_argument('action', choices=['bot', 'index'], help='bot: Run the bot; index: Update the Steam app index.')
-    parser.add_argument('-c', '--config', type=Path, help='The path to an application settings file.', default='appsettings.json')
-    parser.add_argument('-l', '--logconfig', type=Path, help='The path to a log configuration file.', default='logging.conf')
+    parser.add_argument('-c', '--config', help='The path to an application settings file.', default='appsettings.json')
+    parser.add_argument('-l', '--logconfig', help='The path to a log configuration file.', default='logging.conf')
     args = parser.parse_args()
+    config_path = Path(args.config)
+    log_config_path = Path(args.logconfig)
     if args.action == 'bot':
-        return steambot.scripts.run_bot(args.config, args.logconfig)
+        return steambot.scripts.run_bot(config_path, log_config_path)
     elif args.action == 'index':
-        return steambot.scripts.update_index(args.config, args.logconfig)
+        return steambot.scripts.update_index(config_path, log_config_path)
     else:
         raise Exception("First argument must be 'bot' or 'index'!")

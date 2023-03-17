@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "steambot"
-version = "1.2.0"
+version = "1.2.3"
 description = "A Discord bot for Steam news feeds."
 requires-python = ">=3.11"
 readme = "README.md"
@@ -22,4 +22,4 @@ dependencies = [
 "Source code" = "https://github.com/Faxmachinen/steamnews"
 
 [project.scripts]
-cli-name = "steambot.scripts:main"
+steambot = "steambot.scripts:main"
