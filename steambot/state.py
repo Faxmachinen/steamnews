@@ -38,10 +38,9 @@ class Server:
         return Cls(name, id_)
     def set_channel(self, channel):
         if self.channel == channel:
-            return False
+            return
         self.changed = True
         self.channel = channel
-        return True
     def add_feed(self, steam_app_id, channel=None):
         new_app_id = int(steam_app_id)
         if new_app_id in self.subscribed:

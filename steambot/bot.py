@@ -18,6 +18,8 @@ def embed_from_feed_item(item, app_id, app_name, config):
     embed.set_thumbnail(url=config['steam_app_icon_url'].format(id=app_id))
     embed.add_field(name=item.format_date(), value=escape(blurbify(item.description)), inline=False)
     embed.add_field(name='Read more', value=item.link, inline=False)
+    if item.image is not None:
+        embed.set_image(url=item.image)
     return embed
 
 async def send_button_message(ctx, message, options, callback, **args):
@@ -73,11 +75,16 @@ def create_bot(program_state, steam_app_list, config, log):
         if not server:
             await ctx.respond("This is not a server!")
             return
-        old_channel = server.set_channel(int(ctx.channel_id))
+        channel = int(ctx.channel_id)
+        old_channel = server.channel
+        if channel == old_channel:
+            await ctx.respond("Already posting to this channel.", ephemeral=True)
+            return
+        server.set_channel(channel)
+        log.info(f'"{server.name}" (#{server.id}) set channel to "{ctx.channel}" (#{channel})')
+        await ctx.respond("Now posting in this channel.")
         if old_channel is not None:
             await bot.get_channel(old_channel).send("No longer posting to this channel.")
-        log.info(f'"{server.name}" (#{server.id}) set channel to "{ctx.channel}" (#{ctx.channel_id})')
-        await ctx.respond("Now posting in this channel.")
 
     @steamnewsgroup.command(description="Stop posting to this server.")
     async def mute(ctx):

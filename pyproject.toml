@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "steambot"
-version = "1.2.4"
+version = "1.2.6"
 description = "A Discord bot for Steam news feeds."
 requires-python = ">=3.9"
 readme = "README.md"

@@ -2,13 +2,22 @@ import dateutil.parser
 import requests
 import xml.etree.ElementTree as ET
 
-def getChildTextOrNone(tag, child):
+def getChildOrNone(tag, child):
 	if tag is None:
 		return None
-	child_tag = tag.find(child)
+	return tag.find(child)
+
+def getChildTextOrNone(tag, child):
+	child_tag = getChildOrNone(tag, child)
 	if child_tag is None:
 		return None
 	return child_tag.text
+
+def getChildAttributeOrNone(tag, child, attr):
+	child_tag = getChildOrNone(tag, child)
+	if child_tag is None:
+		return None
+	return child_tag.attrib.get(attr, None)
 
 class NewsItem:
 	@classmethod
@@ -18,12 +27,14 @@ class NewsItem:
 		description = getChildTextOrNone(item_tag, 'description')
 		date_text = getChildTextOrNone(item_tag, 'pubDate')
 		date = dateutil.parser.parse(date_text)
-		return Cls(title, link, description, date)
-	def __init__(self, title, link, description, date):
+		image = getChildAttributeOrNone(item_tag, 'enclosure', 'url')
+		return Cls(title, link, description, date, image)
+	def __init__(self, title, link, description, date, image):
 		self.title = title
 		self.link = link
 		self.description = description
 		self.date = date
+		self.image = image
 	def __lt__(self, other):
 		return self.timestamp() < other.timestamp()
 	def timestamp(self):
